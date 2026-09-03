@@ -6,24 +6,32 @@
 
   tasks:
 
-    - name: Find ImagePullBackOff pods
+    - name: Get pods
       kubernetes.core.k8s_info:
         api_version: v1
         kind: Pod
         namespace: "{{ target_namespace }}"
       register: pods
 
+    - name: Find ImagePullBackOff pod
+      ansible.builtin.set_fact:
+        image_pull_pods: >-
+          {{
+            pods.resources
+            | selectattr('status.containerStatuses', 'defined')
+            | selectattr(
+                'status.containerStatuses',
+                'selectattr',
+                'state.waiting.reason',
+                'equalto',
+                'ImagePullBackOff'
+              )
+            | list
+          }}
+
     - name: Display ImagePullBackOff pods
       ansible.builtin.debug:
         msg: >-
+          IMAGE PULL ERROR POD:
           {{ item.metadata.name }}
-      loop: "{{ pods.resources }}"
-      when: >
-        item.status.containerStatuses is defined and
-        (
-          item.status.containerStatuses
-          | selectattr('state.waiting', 'defined')
-          | selectattr('state.waiting.reason', 'equalto', 'ImagePullBackOff')
-          | list
-          | length
-        ) > 0
+      loop: "{{ image_pull_pods }}"

@@ -1,0 +1,62 @@
+---
+- name: Diagnose Crashing Pods
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+
+    - name: Find pods with container crashes
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ target_namespace }}"
+      register: pod_info
+
+    - name: Display crashing pods
+      ansible.builtin.debug:
+        msg:
+          - "CRASHING POD : {{ item.metadata.name }}"
+          - "CONTAINER : {{ container.name }}"
+          - "RESTART COUNT : {{ container.restartCount | default(0) }}"
+          - "CURRENT STATE : {{ container.state | default({}) }}"
+          - "LAST STATE : {{ container.lastState | default({}) }}"
+      loop: "{{ pod_info.resources | subelements('status.containerStatuses', skip_missing=True) }}"
+      loop_control:
+        label: "{{ item.0.metadata.name }} / {{ item.1.name }}"
+      vars:
+        container: "{{ item.1 }}"
+      when:
+        - (item.1.restartCount | default(0) | int) > 0
+        - item.1.lastState is defined
+        - item.1.lastState.terminated is defined
+
+    - name: Display CrashLoopBackOff pods
+      ansible.builtin.debug:
+        msg:
+          - "CRASHLOOPBACKOFF POD : {{ item.0.metadata.name }}"
+          - "CONTAINER : {{ item.1.name }}"
+          - "RESTART COUNT : {{ item.1.restartCount | default(0) }}"
+          - "REASON : {{ item.1.state.waiting.reason | default('Unknown') }}"
+      loop: "{{ pod_info.resources | subelements('status.containerStatuses', skip_missing=True) }}"
+      loop_control:
+        label: "{{ item.0.metadata.name }} / {{ item.1.name }}"
+      when:
+        - item.1.state is defined
+        - item.1.state.waiting is defined
+        - item.1.state.waiting.reason | default('') == 'CrashLoopBackOff'
+
+    - name: No crashing pods found
+      ansible.builtin.debug:
+        msg: "No crashing pods found in {{ target_namespace }}"
+      when: >
+        (
+          pod_info.resources
+          | map(attribute='status.containerStatuses')
+          | select('defined')
+          | flatten
+          | selectattr('restartCount', 'defined')
+          | selectattr('restartCount', 'gt', 0)
+          | list
+          | length
+        ) == 0

@@ -15,23 +15,9 @@
 
     - name: Find ImagePullBackOff pod
       ansible.builtin.set_fact:
-        image_pull_pods: >-
-          {{
-            pods.resources
-            | selectattr('status.containerStatuses', 'defined')
-            | selectattr(
-                'status.containerStatuses',
-                'selectattr',
-                'state.waiting.reason',
-                'equalto',
-                'ImagePullBackOff'
-              )
-            | list
-          }}
+        image_pull_pods: "{{ pods.resources | json_query('[?status.containerStatuses[?state.waiting.reason==`ImagePullBackOff`]]') }}"
 
-    - name: Display ImagePullBackOff pods
+    - name: Display ImagePullBackOff pod
       ansible.builtin.debug:
-        msg: >-
-          IMAGE PULL ERROR POD:
-          {{ item.metadata.name }}
+        msg: "IMAGE PULL ERROR : {{ item.metadata.name }}"
       loop: "{{ image_pull_pods }}"

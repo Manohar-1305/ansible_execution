@@ -6,18 +6,37 @@
 
   tasks:
 
-    - name: Get pods
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Pod
-        namespace: "{{ target_namespace }}"
-      register: pods
+    - name: Find ImagePullBackOff pods
+      ansible.builtin.shell: |
+        python -c '
+        from kubernetes import client, config
+        import json
 
-    - name: Find ImagePullBackOff pod
-      ansible.builtin.set_fact:
-        image_pull_pods: "{{ pods.resources | json_query('[?status.containerStatuses[?state.waiting.reason==`ImagePullBackOff`]]') }}"
+        config.load_incluster_config()
+        v1 = client.CoreV1Api()
 
-    - name: Display ImagePullBackOff pod
+        pods = v1.list_namespaced_pod("{{ target_namespace }}")
+
+        result = []
+
+        for pod in pods.items:
+            for container in (pod.status.container_statuses or []):
+                if container.state and container.state.waiting:
+                    if container.state.waiting.reason == "ImagePullBackOff":
+                        result.append({
+                            "name": pod.metadata.name,
+                            "namespace": pod.metadata.namespace,
+                            "container": container.name,
+                            "image": container.image,
+                            "reason": container.state.waiting.reason,
+                            "message": container.state.waiting.message
+                        })
+
+        print(json.dumps(result))
+        '
+      register: image_pull_result
+      changed_when: false
+
+    - name: Display ImagePullBackOff pods
       ansible.builtin.debug:
-        msg: "IMAGE PULL ERROR : {{ item.metadata.name }}"
-      loop: "{{ image_pull_pods }}"
+        msg: "{{ image_pull_result.stdout | from_json }}"

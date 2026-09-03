@@ -1,0 +1,48 @@
+---
+- name: Diagnose Pending Pods
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+
+    - name: Find Pending pods
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ target_namespace }}"
+      register: pod_info
+
+    - name: Display Pending pods
+      ansible.builtin.debug:
+        msg:
+          - "PENDING POD : {{ item.metadata.name }}"
+          - "NODE SELECTOR : {{ item.spec.nodeSelector | default({}) }}"
+          - "POD REASON : {{ item.status.reason | default('Pending') }}"
+      loop: "{{ pod_info.resources }}"
+      when: item.status.phase | default('') == 'Pending'
+
+    - name: Get events for Pending pods
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Event
+        namespace: "{{ target_namespace }}"
+      register: event_info
+
+    - name: Display scheduling events
+      ansible.builtin.debug:
+        msg:
+          - "POD : {{ item.involvedObject.name }}"
+          - "EVENT : {{ item.reason | default('Unknown') }}"
+          - "MESSAGE : {{ item.message | default('No message') }}"
+      loop: "{{ event_info.resources }}"
+      when:
+        - item.involvedObject.kind | default('') == 'Pod'
+        - item.reason | default('') in ['FailedScheduling', 'FailedMount', 'FailedAttachVolume']
+        - item.involvedObject.name in (pod_info.resources | map(attribute='metadata.name') | list)
+
+    - name: No Pending pods found
+      ansible.builtin.debug:
+        msg: "No Pending pods found in {{ target_namespace }}"
+      when:
+        - pod_info.resources | selectattr('status.phase', 'defined') | selectattr('status.phase', 'equalto', 'Pending') | list | length == 0

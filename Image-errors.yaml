@@ -12,10 +12,6 @@
         kind: Pod
         namespace: "{{ namespace }}"
         name: "{{ pod_name }}"
-        host: "https://kubernetes.default.svc"
-        api_key: "{{ lookup('ansible.builtin.file', '/var/run/secrets/kubernetes.io/serviceaccount/token') }}"
-        ca_cert: "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
-        validate_certs: true
       register: image_error_pod
 
     - name: Display image pull error pod

@@ -7,27 +7,26 @@
   tasks:
 
     - name: Find ImagePullBackOff pods
-      ansible.builtin.shell: |
-        python -c '
-        from kubernetes import client, config
-        config.load_incluster_config()
-        pods = client.CoreV1Api().list_namespaced_pod("{{ target_namespace }}")
-        for pod in pods.items:
-            for container in (pod.status.container_statuses or []):
-                if container.state and container.state.waiting:
-                    if container.state.waiting.reason == "ImagePullBackOff":
-                        print(pod.metadata.name)
-        '
-      register: image_pull_pods
-      changed_when: false
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ target_namespace }}"
+      register: pod_info
 
     - name: Display ImagePullBackOff pods
       ansible.builtin.debug:
-        msg: "IMAGE PULL ERROR : {{ item }}"
-      loop: "{{ image_pull_pods.stdout_lines }}"
-      when: image_pull_pods.stdout_lines | length > 0
+        msg: "IMAGE PULL ERROR : {{ item.metadata.name }}"
+      loop: "{{ pod_info.resources }}"
+      when:
+        - item.status.containerStatuses is defined
+        - item.status.containerStatuses | selectattr("state.waiting.reason", "defined") | selectattr("state.waiting.reason", "equalto", "ImagePullBackOff") | list | length > 0
 
     - name: No ImagePullBackOff pods found
       ansible.builtin.debug:
         msg: "No ImagePullBackOff pods found in {{ target_namespace }}"
-      when: image_pull_pods.stdout_lines | length == 0
+      when: >
+        pod_info.resources
+        | selectattr("status.containerStatuses", "defined")
+        | selectattr("status.containerStatuses", "selectattr", "state.waiting.reason", "defined")
+        | list
+        | length == 0

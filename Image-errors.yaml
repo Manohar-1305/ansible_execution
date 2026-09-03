@@ -6,46 +6,17 @@
 
   tasks:
 
-    - name: Validate required variables
-      ansible.builtin.assert:
-        that:
-          - namespace is defined
-          - namespace | length > 0
-          - pod_name is defined
-          - pod_name | length > 0
-        fail_msg: "Required variables 'namespace' and 'pod_name' must be provided."
-
     - name: Get image pull error pod
       kubernetes.core.k8s_info:
         api_version: v1
         kind: Pod
         namespace: "{{ namespace }}"
         name: "{{ pod_name }}"
+        kubeconfig: ""
       register: image_error_pod
-      failed_when: false
-
-    - name: Check whether pod exists
-      ansible.builtin.assert:
-        that:
-          - image_error_pod.resources | length > 0
-        fail_msg: >-
-          Pod '{{ pod_name }}' was not found in namespace '{{ namespace }}'.
 
     - name: Display image pull error pod
       ansible.builtin.debug:
-        msg:
-          - "IMAGE PULL ERROR"
-          - "Namespace: {{ namespace }}"
-          - "Pod: {{ image_error_pod.resources[0].metadata.name }}"
-          - "Phase: {{ image_error_pod.resources[0].status.phase | default('Unknown') }}"
-
-    - name: Display container waiting reasons
-      ansible.builtin.debug:
         msg: >-
-          Container '{{ item.name }}':
-          Reason={{ item.state.waiting.reason | default('Unknown') }},
-          Message={{ item.state.waiting.message | default('No message') }}
-      loop: "{{ image_error_pod.resources[0].status.containerStatuses | default([]) }}"
-      when:
-        - item.state is defined
-        - item.state.waiting is defined
+          IMAGE PULL ERROR:
+          {{ image_error_pod.resources[0].metadata.name }}

@@ -6,12 +6,14 @@
 
   tasks:
 
-    - name: Get pod
-      ansible.builtin.command:
-        cmd: kubectl get pod "{{ pod_name }}" -n "{{ namespace }}" -o json
-      register: pod_result
-      changed_when: false
+    - name: Get image pull error pod
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ target_namespace }}"
+        name: "{{ pod_name }}"
+      register: image_error_pod
 
-    - name: Display pod
+    - name: Display image pull error pod
       ansible.builtin.debug:
-        msg: "{{ pod_result.stdout | from_json }}"
+        msg: "IMAGE PULL ERROR : {{ image_error_pod.resources[0].metadata.name }}"
